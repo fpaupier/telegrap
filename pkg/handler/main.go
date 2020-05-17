@@ -1,0 +1,212 @@
+// Package github.com/fpaupier/telegrap/pkg/handler contains an HTTP Cloud Function.
+package handler
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+)
+
+// Define a few constants and variable to handle different commands
+const punchCommand string = "/punch"
+
+var lenPunchCommand int = len(punchCommand)
+
+const startCommand string = "/start"
+
+var lenStartCommand int = len(startCommand)
+
+const botTag string = "@RapGeniusBot"
+
+var lenBotTag int = len(botTag)
+
+// Pass token and sensible APIs through environment variables
+const telegramApiBaseUrl string = "https://api.telegram.org/bot"
+const telegramApiSendMessage string = "/sendMessage"
+const telegramTokenEnv string = "TELEGRAM_BOT_TOKEN"
+
+var telegramApi string = telegramApiBaseUrl + os.Getenv(telegramTokenEnv) + telegramApiSendMessage
+
+const RapLyricsApiEnv string = "RAPLYRICS_API"
+
+var RapLyricsApi string = os.Getenv(RapLyricsApiEnv)
+
+// Update is a Telegram object that we receive every time an user interacts with the bot.
+type Update struct {
+	UpdateId int     `json:"update_id"`
+	Message  Message `json:"message"`
+}
+
+// Implements the fmt.String interface to get the representation of an Update as a string.
+func (u Update) String() string {
+	return fmt.Sprintf("(update id: %d, message: %s)", u.UpdateId, u.Message)
+}
+
+type Message struct {
+	Text     string   `json:"text"`
+	Chat     Chat     `json:"chat"`
+	Audio    Audio    `json:"audio"`
+	Voice    Voice    `json:"voice"`
+	Document Document `json:"document"`
+}
+
+// Implements the fmt.String interface to get the representation of a Message as a string.
+func (m Message) String() string {
+	return fmt.Sprintf("(text: %s, chat: %s, audio %s)", m.Text, m.Chat, m.Audio)
+}
+
+// Define Audio type of message
+type Audio struct {
+	FileId   string `json:"file_id"`
+	Duration int    `json:"duration"`
+}
+
+// Implements the fmt.String interface to get the representation of an Audio as a string.
+func (a Audio) String() string {
+	return fmt.Sprintf("(file id: %s, duration: %d)", a.FileId, a.Duration)
+}
+
+// Define Voice type of message as a kind of Audio message
+type Voice Audio
+
+// Define Document type of message
+type Document struct {
+	FileId   string `json:"file_id"`
+	FileName string `json:"file_name"`
+}
+
+// Implements the fmt.String interface to get the representation of an Document as a string.
+func (d Document) String() string {
+	return fmt.Sprintf("(file id: %s, file name: %s)", d.FileId, d.FileName)
+}
+
+// A telegram Chat is the conversation the message belongs to
+type Chat struct {
+	Id int `json:"id"`
+}
+
+// Implements the fmt.String interface to get the representation of a Chat as a string.
+func (c Chat) String() string {
+	return fmt.Sprintf("(id: %d)", c.Id)
+}
+
+// RapLyrics sends back a json containing an `output` field with the generated punchline.
+type Lyric struct {
+	Punch string `json:"output"`
+}
+
+// HandleTelegramWebHook sends a message back to the chat with a punchline starting by the message provided by the user.
+func HandleTelegramWebHook(w http.ResponseWriter, r *http.Request) {
+
+	// Parse incoming request
+	var update, err = parseTelegramRequest(r)
+	if err != nil {
+		log.Printf("error parsing update, %s", err.Error())
+		return
+	}
+
+	// Sanitize input
+	var sanitizedSeed = sanitize(update.Message.Text)
+
+	// Call RapLyrics to get a punchline
+	var lyric, errRapLyrics = getPunchline(sanitizedSeed)
+	if errRapLyrics != nil {
+		log.Printf("got error when calling RapLyrics API %s", errRapLyrics.Error())
+		return
+	}
+
+	// Send the punchline back to Telegram
+	var telegramResponseBody, errTelegram = sendTextToTelegramChat(update.Message.Chat.Id, lyric)
+	if errTelegram != nil {
+		log.Printf("got error %s from telegram, reponse body is %s", errTelegram.Error(), telegramResponseBody)
+	} else {
+		log.Printf("punchline %s successfuly distributed to chat id %d", lyric, update.Message.Chat.Id)
+	}
+}
+
+// parseTelegramRequest handles incoming update from the Telegram web hook
+func parseTelegramRequest(r *http.Request) (*Update, error) {
+	var update Update
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		log.Printf("could not decode incoming update %s", err.Error())
+		return nil, err
+	}
+	if update.UpdateId == 0 {
+		log.Printf("invalid update id, got update id = 0")
+		return nil, errors.New("invalid update id of 0 indicates failure to parse incoming update")
+	}
+	return &update, nil
+}
+
+// sanitize remove clutter like /start /punch or the bot name from the string s passed as input
+func sanitize(s string) string {
+	if len(s) >= lenStartCommand {
+		if s[:lenStartCommand] == startCommand {
+			s = s[lenStartCommand:]
+		}
+	}
+
+	if len(s) >= lenPunchCommand {
+		if s[:lenPunchCommand] == punchCommand {
+			s = s[lenPunchCommand:]
+		}
+	}
+	if len(s) >= lenBotTag {
+		if s[:lenBotTag] == botTag {
+			s = s[lenBotTag:]
+		}
+	}
+	return s
+}
+
+// getPunchline calls the RapLyrics API to get a punchline back.
+func getPunchline(seed string) (string, error) {
+	rapLyricsResp, err := http.PostForm(
+		RapLyricsApi,
+		url.Values{"input": {seed}})
+	if err != nil {
+		log.Printf("error while calling raplyrics %s", err.Error())
+		return "", err
+	}
+	var punchline Lyric
+	if err := json.NewDecoder(rapLyricsResp.Body).Decode(&punchline); err != nil {
+		log.Printf("could not decode incoming punchline %s", err.Error())
+		return "", err
+	}
+	defer rapLyricsResp.Body.Close()
+	return punchline.Punch, nil
+}
+
+// sendTextToTelegramChat sends a text message to the Telegram chat identified by its chat Id
+func sendTextToTelegramChat(chatId int, text string) (string, error) {
+
+	log.Printf("Sending %s to chat_id: %d", text, chatId)
+	response, err := http.PostForm(
+		telegramApi,
+		url.Values{
+			"chat_id": {strconv.Itoa(chatId)},
+			"text":    {text},
+		})
+	defer response.Body.Close()
+
+	if err != nil {
+		log.Printf("error when posting text to the chat: %s", err.Error())
+		return "", err
+	}
+
+	var bodyBytes, errRead = ioutil.ReadAll(response.Body)
+	if errRead != nil {
+		log.Printf("error in parsing telegram answer %s", errRead.Error())
+		return "", err
+	}
+	bodyString := string(bodyBytes)
+	log.Printf("Body of Telegram Response: %s", bodyString)
+
+	return bodyString, nil
+}
