@@ -31,4 +31,4 @@ jobs:
           fi
 
       - name: Test
-        run: cd pkg/TelegramRapLyricsHandler && go test -v .
+        run: cd pkg/handler && go test -v .
