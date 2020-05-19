@@ -1,6 +1,6 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/fpaupier/telegrap)](https://goreportcard.com/report/github.com/fpaupier/telegrap)
 
-__Code for the @RapGeniusBot, a bot the Telegram messaging service.__ 
+_Code for the @RapGeniusBot, an AI powered rap music generating bot, available on the Telegram messaging service._ 
 
 ## What's in this repo? 
 The [@RapGeniusBot](https://t.me/RapGeniusBot) is a Telegram bot with which users can interact to generate rap music lyrics.
