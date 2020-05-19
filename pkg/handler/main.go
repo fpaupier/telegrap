@@ -1,4 +1,5 @@
-// Package github.com/fpaupier/telegrap/pkg/handler contains an HTTP Cloud Function.
+// Package handler contains an HTTP Cloud Function to handle update from Telegram whenever a users interacts with the
+// bot.
 package handler
 
 import (
