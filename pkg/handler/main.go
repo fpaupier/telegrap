@@ -124,9 +124,9 @@ func HandleTelegramWebHook(w http.ResponseWriter, r *http.Request) {
 	// Send the punchline back to Telegram
 	var telegramResponseBody, errTelegram = sendTextToTelegramChat(update.Message.Chat.Id, lyric)
 	if errTelegram != nil {
-		log.Printf("got error %s from telegram, reponse body is %s", errTelegram.Error(), telegramResponseBody)
+		log.Printf("got error %s from telegram, response body is %s", errTelegram.Error(), telegramResponseBody)
 	} else {
-		log.Printf("punchline %s successfuly distributed to chat id %d", lyric, update.Message.Chat.Id)
+		log.Printf("punchline %s successfully distributed to chat id %d", lyric, update.Message.Chat.Id)
 	}
 }
 
