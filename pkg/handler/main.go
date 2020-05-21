@@ -196,12 +196,12 @@ func sendTextToTelegramChat(chatId int, text string) (string, error) {
 			"chat_id": {strconv.Itoa(chatId)},
 			"text":    {text},
 		})
-	defer response.Body.Close()
 
 	if err != nil {
 		log.Printf("error when posting text to the chat: %s", err.Error())
 		return "", err
 	}
+	defer response.Body.Close()
 
 	var bodyBytes, errRead = ioutil.ReadAll(response.Body)
 	if errRead != nil {
