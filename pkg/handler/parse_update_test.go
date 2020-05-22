@@ -20,12 +20,15 @@ func TestParseUpdateMessageWithText(t *testing.T) {
 		Message:  msg,
 	}
 
-	requestBody, _ := json.Marshal(update)
+	requestBody, err := json.Marshal(update)
+	if err != nil {
+		t.Errorf("Failed to marshal update in json, got %s", err.Error())
+	}
 	req := httptest.NewRequest("POST", "http://myTelegramWebHookHandler.com/secretToken", bytes.NewBuffer(requestBody))
 
-	var updateToTest, err = parseTelegramRequest(req)
-	if err != nil {
-		t.Errorf("Expected a <nil> error, got %s", err.Error())
+	var updateToTest, errParse = parseTelegramRequest(req)
+	if errParse != nil {
+		t.Errorf("Expected a <nil> error, got %s", errParse.Error())
 	}
 	if *updateToTest != update {
 		t.Errorf("Expected update %s, got %s", update, updateToTest)
